@@ -32,7 +32,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew testDebugUnitTest assembleRelease
+        run: gradle testDebugUnitTest assembleRelease
 
       - name: Upload Signed Release APK
         uses: actions/upload-artifact@v4
