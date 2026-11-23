@@ -12,6 +12,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 import kotlin.math.hypot
 
 class TouchAndSensorTest {
@@ -121,7 +122,11 @@ class TouchAndSensorTest {
     }
 
     @Test
-    fun sensorPipeline_firstSampleZeroSpikeAndDeadzoneSuppression() {
+    fun sensorPipeline_firstSampleZeroSpikeAndV52DeadzoneCalibration() {
+        assertEquals(0.08f, SensorFilterPipeline.OMEGA_DEADZONE, 1e-6f)
+        assertEquals(0.08f, SensorFilterPipeline.GYRO_DEADZONE, 1e-6f)
+        assertEquals(0.25f, SensorFilterPipeline.ACCEL_DEADZONE, 1e-6f)
+
         val pipeline = SensorFilterPipeline()
         val config = MochiPreset.MOCHI.toDefaultConfig()
 
@@ -133,37 +138,49 @@ class TouchAndSensorTest {
         assertEquals(0f, initialForce.y, 0f)
         assertFalse(pipeline.hasActiveForce(config))
 
-        // Tiny noise below deadzone stays strictly 0
+        // Tiny noise below V5.2 deadzones (accel <= 0.25, gyro <= 0.08) stays strictly 0
         pipeline.reset()
         pipeline.onLinearAcceleration(0f, 0f, 1_000_000_000L, DisplayRotation.ROTATION_0)
-        pipeline.onLinearAcceleration(0.20f, -0.20f, 1_020_000_000L, DisplayRotation.ROTATION_0)
+        pipeline.onLinearAcceleration(0.18f, -0.18f, 1_020_000_000L, DisplayRotation.ROTATION_0)
         pipeline.onGyroscope(0f, 0f, 1_000_000_000L, DisplayRotation.ROTATION_0)
-        pipeline.onGyroscope(0.10f, -0.10f, 1_020_000_000L, DisplayRotation.ROTATION_0)
+        pipeline.onGyroscope(0.06f, -0.06f, 1_020_000_000L, DisplayRotation.ROTATION_0)
 
         val quietForce = pipeline.computeForce(config)
         assertEquals(0f, quietForce.x, 0f)
         assertEquals(0f, quietForce.y, 0f)
+
+        // Smooth wrist tilt above 0.08 rad/s (e.g. sustained 0.25 rad/s) registers clearly
+        pipeline.reset()
+        var t = 1_000_000_000L
+        pipeline.onGyroscope(0f, 0f, t, DisplayRotation.ROTATION_0)
+        for (i in 1..6) {
+            t += 20_000_000L
+            pipeline.onGyroscope(0f, 0.25f, t, DisplayRotation.ROTATION_0)
+        }
+        val gentleGyroForce = pipeline.computeForce(config)
+        assertTrue("Gentle wrist tilt should register positive Fx, got ${gentleGyroForce.x}", gentleGyroForce.x > 0.2f)
     }
 
     @Test
-    fun sensorPipeline_verifiesExplicitInertialAndGyroSignsAndRotations() {
+    fun sensorPipeline_verifiesExplicitInertialAndGyroSignsRotationsAndV52ForceStrength() {
         val pipeline = SensorFilterPipeline()
         val config = MochiPreset.MOCHI.toDefaultConfig()
 
-        // +a_x' -> -F_x, +a_y' -> +F_y (in physics +Y down)
+        // +a_x' -> -F_x, +a_y' -> +F_y (in physics +Y down) with strong V5.2 shake force
         pipeline.onLinearAcceleration(0f, 0f, 1_000_000_000L, DisplayRotation.ROTATION_0)
         pipeline.onLinearAcceleration(6f, 6f, 1_020_000_000L, DisplayRotation.ROTATION_0)
         val accelForce = pipeline.computeForce(config)
-        assertTrue("Expected +a_x to produce -F_x, got ${accelForce.x}", accelForce.x < 0f)
-        assertTrue("Expected +a_y to produce +F_y, got ${accelForce.y}", accelForce.y > 0f)
+        assertTrue("Expected +a_x to produce strong -F_x (< -3.0), got ${accelForce.x}", accelForce.x < -3.0f)
+        assertTrue("Expected +a_y to produce strong +F_y (> 3.0), got ${accelForce.y}", accelForce.y > 3.0f)
 
-        // +omega_y' -> +F_x, +omega_x' -> +F_y
+        // +omega_y' -> +F_x, +omega_x' -> +F_y with strong V5.2 gyro force
         pipeline.reset()
         pipeline.onGyroscope(0f, 0f, 1_000_000_000L, DisplayRotation.ROTATION_0)
         pipeline.onGyroscope(2f, 3f, 1_050_000_000L, DisplayRotation.ROTATION_0)
         val gyroForce = pipeline.computeForce(config)
-        assertTrue("Expected +omega_y to produce +F_x, got ${gyroForce.x}", gyroForce.x > 0f)
-        assertTrue("Expected +omega_x to produce +F_y, got ${gyroForce.y}", gyroForce.y > 0f)
+        assertTrue("Expected +omega_y to produce strong +F_x (> 4.0), got ${gyroForce.x}", gyroForce.x > 4.0f)
+        assertTrue("Expected +omega_x to produce strong +F_y (> 3.0), got ${gyroForce.y}", gyroForce.y > 3.0f)
+        assertTrue(abs(gyroForce.x) > abs(gyroForce.y))
 
         // Verify all 4 DisplayRotation remappings on +sx = 8, sy = 0
         // ROTATION_90:  (sx', sy') = (-sy, +sx) = (0, +8) -> F_x = 0, F_y > 0

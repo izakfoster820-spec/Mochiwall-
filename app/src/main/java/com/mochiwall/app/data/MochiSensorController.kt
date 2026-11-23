@@ -14,11 +14,12 @@ import com.mochiwall.app.core.physics.DisplayRotation
 
 /**
  * Hardware sensor and display-rotation controller wiring Android's `TYPE_LINEAR_ACCELERATION`
- * and optional `TYPE_GYROSCOPE` sensors into [com.mochiwall.app.core.physics.SensorFilterPipeline].
+ * and optional `TYPE_GYROSCOPE` (falling back to `TYPE_GYROSCOPE_UNCALIBRATED` only when
+ * `TYPE_GYROSCOPE` is unavailable) into [com.mochiwall.app.core.physics.SensorFilterPipeline].
  *
- * Caches the default display's [DisplayRotation] in a `@Volatile` field updated via
- * [DisplayManager.DisplayListener] so [SensorEventListener.onSensorChanged] never queries
- * `Display.rotation` per event. Passing an optional [sensorHandler] routes sensor callbacks
+ * Caches the default display's [DisplayRotation] in a `@Volatile` field updated immediately upon
+ * [start] and via [DisplayManager.DisplayListener] so [SensorEventListener.onSensorChanged] never
+ * queries `Display.rotation` per event. Passing an optional [sensorHandler] routes sensor callbacks
  * directly to a dedicated render thread (e.g. `SimpleEglRenderThread`) without bouncing through
  * the Main Thread.
  */
@@ -49,6 +50,7 @@ class MochiSensorController(
         sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
     private val gyroSensor: Sensor? =
         sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE_UNCALIBRATED)
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stateLock = Any()
@@ -86,7 +88,8 @@ class MochiSensorController(
                 Sensor.TYPE_LINEAR_ACCELERATION -> {
                     onLinearAcceleration(values[0], values[1], event.timestamp, rotation)
                 }
-                Sensor.TYPE_GYROSCOPE -> {
+                Sensor.TYPE_GYROSCOPE,
+                Sensor.TYPE_GYROSCOPE_UNCALIBRATED -> {
                     onGyroscope(values[0], values[1], event.timestamp, rotation)
                 }
             }
@@ -99,7 +102,8 @@ class MochiSensorController(
 
     /**
      * Idempotently starts listening to display rotation changes and motion sensors at
-     * [SensorManager.SENSOR_DELAY_GAME]. Missing hardware sensors are safely skipped.
+     * [SensorManager.SENSOR_DELAY_GAME]. Initializes [currentRotation] immediately before
+     * registering listeners. Missing hardware sensors are safely skipped.
      */
     fun start() {
         synchronized(stateLock) {

@@ -122,8 +122,8 @@ class SensorFilterPipeline {
         gyroLpX += alphaG * (rwx - gyroLpX)
         gyroLpY += alphaG * (rwy - gyroLpY)
 
-        gyroFiltX = softDeadzoneAndTanh(gyroLpX, GYRO_DEADZONE, GYRO_MAX)
-        gyroFiltY = softDeadzoneAndTanh(gyroLpY, GYRO_DEADZONE, GYRO_MAX)
+        gyroFiltX = softDeadzoneAndTanh(gyroLpX, OMEGA_DEADZONE, GYRO_MAX)
+        gyroFiltY = softDeadzoneAndTanh(gyroLpY, OMEGA_DEADZONE, GYRO_MAX)
     }
 
     fun computeForceX(config: PhysicsConfig): Float {
@@ -207,11 +207,12 @@ class SensorFilterPipeline {
 
         const val TAU_ACCEL_HP = 0.32f
         const val TAU_ACCEL_LP = 0.010f
-        const val ACCEL_DEADZONE = 0.35f
+        const val ACCEL_DEADZONE = 0.25f
         const val ACCEL_MAX = 18.0f
 
         const val TAU_GYRO_LP = 0.045f
-        const val GYRO_DEADZONE = 0.15f
+        const val OMEGA_DEADZONE = 0.08f
+        const val GYRO_DEADZONE = OMEGA_DEADZONE
         const val GYRO_MAX = 6.0f
     }
 }

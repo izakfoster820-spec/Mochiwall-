@@ -43,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mochiwall.app.core.model.MochiPreset
 import com.mochiwall.app.core.model.PhysicsConfig
+import com.mochiwall.app.core.model.PhysicsStyle
 import com.mochiwall.app.ui.theme.MochiColors
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -60,11 +62,12 @@ import kotlin.math.roundToInt
  * Collapsible floating bottom panel for Stage 3 live physics tuning.
  *
  * Intentionally avoids a full-screen dimmed `ModalBottomSheet` scrim so the upper ~46% of the
- * live wallpaper remains directly interactive while adjusting sliders, presets, and toggles.
+ * live wallpaper remains directly interactive while adjusting style, presets, sliders, and toggles.
  */
 @Composable
 fun PhysicsBottomSheet(
     config: PhysicsConfig,
+    onStyleChange: (PhysicsStyle) -> Unit,
     onSelectPreset: (MochiPreset) -> Unit,
     onSoftnessChange: (Float) -> Unit,
     onWobbleChange: (Float) -> Unit,
@@ -174,7 +177,7 @@ fun PhysicsBottomSheet(
 
             HorizontalDivider(color = MochiColors.PanelBorder, thickness = 1.dp)
 
-            // Scrollable Controls (Presets + 4 Sliders + 4 Toggles)
+            // Scrollable Controls (Style Switch + Presets + 4 Sliders + 4 Toggles)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -183,6 +186,12 @@ fun PhysicsBottomSheet(
                     .padding(top = 12.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // 2-Pill Physics Style Segmented Selector
+                PhysicsStyleSelector(
+                    selectedStyle = config.style,
+                    onStyleChange = onStyleChange
+                )
+
                 // 3 Preset Chips Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -319,6 +328,68 @@ fun PhysicsBottomSheet(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PhysicsStyleSelector(
+    selectedStyle: PhysicsStyle,
+    onStyleChange: (PhysicsStyle) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MochiColors.ObsidianBg,
+        border = BorderStroke(1.dp, MochiColors.PanelBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            StyleSegmentPill(
+                label = "Mochi (Smooth)",
+                selected = selectedStyle == PhysicsStyle.MOCHI,
+                onClick = { onStyleChange(PhysicsStyle.MOCHI) },
+                modifier = Modifier.weight(1f)
+            )
+            StyleSegmentPill(
+                label = "Jelly (Waves)",
+                selected = selectedStyle == PhysicsStyle.JELLY,
+                onClick = { onStyleChange(PhysicsStyle.JELLY) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StyleSegmentPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) MochiColors.SoftCoral else Color.Transparent
+    ) {
+        Text(
+            text = label,
+            color = if (selected) MochiColors.ObsidianBg else MochiColors.MochiCream.copy(alpha = 0.85f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        )
     }
 }
 

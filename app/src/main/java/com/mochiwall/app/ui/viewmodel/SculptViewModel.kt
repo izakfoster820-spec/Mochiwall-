@@ -28,7 +28,7 @@ data class SculptUiState(
     val isCommitting: Boolean = false,
     val tool: SculptTool = SculptTool.BRUSH,
     val brushSizeFraction: Float = 0.12f,
-    val feather: Float = 0.50f,
+    val feather: Float = 0.20f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val zoom: Float = 1.0f,

@@ -2,6 +2,7 @@ package com.mochiwall.app.core.physics
 
 import com.mochiwall.app.core.model.DerivedPhysicsParams
 import com.mochiwall.app.core.model.PhysicsConfig
+import com.mochiwall.app.core.model.PhysicsStyle
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -11,12 +12,13 @@ import kotlin.math.pow
 
 /**
  * 36x80 Structure-of-Arrays (SoA) 60 Hz fixed-timestep elastic mochi solver with:
- * - Zero per-frame heap allocations (cached DerivedPhysicsParams)
+ * - Zero per-frame heap allocations (cached DerivedPhysicsParams + pre-allocated viscosity scratch)
  * - prevU/currU render interpolation for smooth 90/120 Hz LTPO display output
- * - Two-pass Semi-Implicit Euler + alternating Gauss-Seidel commit
+ * - Two-pass Semi-Implicit Euler + symmetric Laplacian neighbor velocity viscosity (MOCHI anti-ripple)
+ *   + alternating Gauss-Seidel commit
  * - Anisotropic cardinal edge clamp (1.65 hx, 1.65 hy)
  * - Closed-form 6-incident-triangle minimum-area anti-inversion guard (A_min = 0.20 A0)
- * - Radial Poisson Poke, Wake Wobble impulse, and exact IDLE dual-buffer sleep reset
+ * - Cohesive Mochi bounce poke & Radial Poisson Jelly poke, Wake Wobble impulse, and exact IDLE sleep reset
  */
 class MochiPhysicsSolver(initialAspectRatio: Float = DEFAULT_ASPECT_RATIO) {
 
@@ -32,6 +34,9 @@ class MochiPhysicsSolver(initialAspectRatio: Float = DEFAULT_ASPECT_RATIO) {
     val mobility = FloatArray(VERTEX_COUNT)
     val dampScale = FloatArray(VERTEX_COUNT)
     val tetherWeight = FloatArray(VERTEX_COUNT)
+
+    private val snapVx = FloatArray(VERTEX_COUNT)
+    private val snapVy = FloatArray(VERTEX_COUNT)
 
     var renderAlpha: Float = 1f
         private set
@@ -167,41 +172,85 @@ class MochiPhysicsSolver(initialAspectRatio: Float = DEFAULT_ASPECT_RATIO) {
         if (!hasActiveVertices || !tapX.isFinite() || !tapY.isFinite()) return
 
         val params = resolveParams(config)
-        val sigmaTap = params.sigmaTap
-        val invSigmaTap = 1f / sigmaTap
-        val invTwoSigmaTapSq = 1.0 / (2.0 * sigmaTap.toDouble() * sigmaTap.toDouble())
         val iPoke = params.iPoke
 
-        for (idx in 0 until VERTEX_COUNT) {
-            val m = mobility[idx]
-            if (m <= 0f) continue
+        if (config.style == PhysicsStyle.JELLY) {
+            val sigmaTap = params.sigmaTap
+            val invSigmaTap = 1f / sigmaTap
+            val invTwoSigmaTapSq = 1.0 / (2.0 * sigmaTap.toDouble() * sigmaTap.toDouble())
 
-            val rx = p0x[idx] - tapX
-            val ry = p0y[idx] - tapY
-            val distSq = rx.toDouble() * rx.toDouble() + ry.toDouble() * ry.toDouble()
-            val g = exp(-distSq * invTwoSigmaTapSq).toFloat()
+            for (idx in 0 until VERTEX_COUNT) {
+                val m = mobility[idx]
+                if (m <= 0f) continue
 
-            var dvx = m * iPoke * (rx * invSigmaTap) * g
-            var dvy = m * iPoke * (ry * invSigmaTap + 0.25f) * g
+                val rx = p0x[idx] - tapX
+                val ry = p0y[idx] - tapY
+                val distSq = rx.toDouble() * rx.toDouble() + ry.toDouble() * ry.toDouble()
+                val g = exp(-distSq * invTwoSigmaTapSq).toFloat()
 
-            val impulseMag = hypot(dvx, dvy)
-            if (impulseMag > MAX_POKE_IMPULSE) {
-                val scale = MAX_POKE_IMPULSE / impulseMag
-                dvx *= scale
-                dvy *= scale
+                var dvx = m * iPoke * (rx * invSigmaTap) * g
+                var dvy = m * iPoke * (ry * invSigmaTap + 0.25f) * g
+
+                val impulseMag = hypot(dvx, dvy)
+                if (impulseMag > MAX_POKE_IMPULSE) {
+                    val scale = MAX_POKE_IMPULSE / impulseMag
+                    dvx *= scale
+                    dvy *= scale
+                }
+
+                var nvx = vx[idx] + dvx
+                var nvy = vy[idx] + dvy
+                val velMag = hypot(nvx, nvy)
+                if (velMag > MAX_VELOCITY) {
+                    val scale = MAX_VELOCITY / velMag
+                    nvx *= scale
+                    nvy *= scale
+                }
+                if (nvx.isFinite() && nvy.isFinite()) {
+                    vx[idx] = nvx
+                    vy[idx] = nvy
+                }
             }
+        } else {
+            val sigma = 1.15f * params.sigmaRadius
+            val invTwoSigmaSq = 1.0 / (2.0 * sigma.toDouble() * sigma.toDouble())
 
-            var nvx = vx[idx] + dvx
-            var nvy = vy[idx] + dvy
-            val velMag = hypot(nvx, nvy)
-            if (velMag > MAX_VELOCITY) {
-                val scale = MAX_VELOCITY / velMag
-                nvx *= scale
-                nvy *= scale
-            }
-            if (nvx.isFinite() && nvy.isFinite()) {
-                vx[idx] = nvx
-                vy[idx] = nvy
+            for (idx in 0 until VERTEX_COUNT) {
+                val m = mobility[idx]
+                if (m <= 0f) continue
+
+                val rx = p0x[idx] - tapX
+                val ry = p0y[idx] - tapY
+                val distSq = rx.toDouble() * rx.toDouble() + ry.toDouble() * ry.toDouble()
+                val dist = hypot(rx, ry)
+                val radialDirX = if (dist > 1e-5f) rx / dist else 0f
+                val radialDirY = if (dist > 1e-5f) ry / dist else 0f
+
+                val gaussian = exp(-distSq * invTwoSigmaSq).toFloat()
+                val impulseScale = m * gaussian * iPoke * 0.70f
+
+                var dvx = impulseScale * (0.25f * radialDirX)
+                var dvy = impulseScale * (0.85f + 0.25f * radialDirY)
+
+                val impulseMag = hypot(dvx, dvy)
+                if (impulseMag > MAX_POKE_IMPULSE) {
+                    val scale = MAX_POKE_IMPULSE / impulseMag
+                    dvx *= scale
+                    dvy *= scale
+                }
+
+                var nvx = vx[idx] + dvx
+                var nvy = vy[idx] + dvy
+                val velMag = hypot(nvx, nvy)
+                if (velMag > MAX_VELOCITY) {
+                    val scale = MAX_VELOCITY / velMag
+                    nvx *= scale
+                    nvy *= scale
+                }
+                if (nvx.isFinite() && nvy.isFinite()) {
+                    vx[idx] = nvx
+                    vy[idx] = nvy
+                }
             }
         }
 
@@ -387,6 +436,7 @@ class MochiPhysicsSolver(initialAspectRatio: Float = DEFAULT_ASPECT_RATIO) {
         val params = resolveParams(config)
         val kStiff = params.kStiff
         val kCoupleOver5 = params.kCouple * 0.2f
+        val cShear = params.cShear
         val cDamp = params.cDamp
         val kGrab = params.kGrab
         val cGrab = params.cGrab
@@ -398,7 +448,12 @@ class MochiPhysicsSolver(initialAspectRatio: Float = DEFAULT_ASPECT_RATIO) {
         val safeDragDx = if (dragDx.isFinite()) dragDx else 0f
         val safeDragDy = if (dragDy.isFinite()) dragDy else 0f
 
-        // Pass 1: Velocity Update with Implicit Damping
+        // Pass 1: Velocity Update with Symmetric Anti-Ripple Viscosity & Implicit Damping
+        if (cShear > 0f) {
+            System.arraycopy(vx, 0, snapVx, 0, VERTEX_COUNT)
+            System.arraycopy(vy, 0, snapVy, 0, VERTEX_COUNT)
+        }
+
         for (j in 1 until NY - 1) {
             val rowOffset = j * NX
             for (i in 1 until NX - 1) {
@@ -433,12 +488,25 @@ class MochiPhysicsSolver(initialAspectRatio: Float = DEFAULT_ASPECT_RATIO) {
                     cEff = s * cDamp
                 }
 
-                val fNonDampX = m * (-kStiff * uxi + fCoupleX + safeSensorFx + fTetherX)
-                val fNonDampY = m * (-kStiff * uyi + fCoupleY + safeSensorFy + fTetherY)
+                var ax = m * (-kStiff * uxi + fCoupleX + safeSensorFx + fTetherX)
+                var ay = m * (-kStiff * uyi + fCoupleY + safeSensorFy + fTetherY)
+
+                if (cShear > 0f) {
+                    val viscX = cShear * (
+                        (snapVx[idx - 1] + snapVx[idx + 1] + snapVx[idx - NX] + snapVx[idx + NX]) -
+                            4f * snapVx[idx]
+                        )
+                    val viscY = cShear * (
+                        (snapVy[idx - 1] + snapVy[idx + 1] + snapVy[idx - NX] + snapVy[idx + NX]) -
+                            4f * snapVy[idx]
+                        )
+                    ax += viscX
+                    ay += viscY
+                }
 
                 val invDenom = 1f / (1f + FIXED_DT_F * cEff)
-                var nvx = (vx[idx] + FIXED_DT_F * fNonDampX) * invDenom
-                var nvy = (vy[idx] + FIXED_DT_F * fNonDampY) * invDenom
+                var nvx = (vx[idx] + FIXED_DT_F * ax) * invDenom
+                var nvy = (vy[idx] + FIXED_DT_F * ay) * invDenom
 
                 val velMag = hypot(nvx, nvy)
                 if (velMag > MAX_VELOCITY) {

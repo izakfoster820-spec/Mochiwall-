@@ -126,6 +126,7 @@ class MochiWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             setTouchEventsEnabled(true)
             setOffsetNotificationsEnabled(false)
+            engineVisible = isVisible
 
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_ON)

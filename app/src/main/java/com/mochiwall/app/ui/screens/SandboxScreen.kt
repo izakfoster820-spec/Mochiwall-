@@ -218,6 +218,7 @@ fun SandboxScreen(
         ) {
             PhysicsBottomSheet(
                 config = projectState.config,
+                onStyleChange = viewModel::setStyle,
                 onSelectPreset = viewModel::selectPreset,
                 onSoftnessChange = viewModel::setSoftness,
                 onWobbleChange = viewModel::setWobble,

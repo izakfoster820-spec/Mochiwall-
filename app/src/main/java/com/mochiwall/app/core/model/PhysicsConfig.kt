@@ -1,13 +1,26 @@
 package com.mochiwall.app.core.model
 
 import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sqrt
 
+enum class PhysicsStyle {
+    MOCHI,
+    JELLY;
+
+    companion object {
+        fun fromName(name: String?): PhysicsStyle {
+            val normalized = name?.trim() ?: return MOCHI
+            return entries.firstOrNull { it.name.equals(normalized, ignoreCase = true) } ?: MOCHI
+        }
+    }
+}
+
 data class DerivedPhysicsParams(
+    val style: PhysicsStyle,
     val kStiff: Float,
     val kCouple: Float,
+    val cShear: Float,
     val zeta: Float,
     val cDamp: Float,
     val sigmaRadius: Float,
@@ -22,6 +35,7 @@ data class DerivedPhysicsParams(
 
 data class PhysicsConfig(
     val preset: MochiPreset = MochiPreset.MOCHI,
+    val style: PhysicsStyle = PhysicsStyle.MOCHI,
     val softness: Float = MochiPreset.MOCHI.softness,
     val wobble: Float = MochiPreset.MOCHI.wobble,
     val pullRadius: Float = MochiPreset.MOCHI.pullRadius,
@@ -47,27 +61,44 @@ data class PhysicsConfig(
         val r = clean.pullRadius.toDouble()
         val f = clean.shakeForce.toDouble()
 
-        val kStiff = 340.0 * (95.0 / 340.0).pow(s)
-        val kCouple = 1875.0 * (4.0 / 9.0).pow(s)
+        val kStiff = 480.0 * (90.0 / 480.0).pow(s)
         val zeta = 0.55 - 0.43 * b
         val sqrtKStiff = sqrt(kStiff)
         val cDamp = 2.0 * zeta * sqrtKStiff
+
+        val grabRatio = 1.2 + 5.3 * s
+        val kGrab = kStiff * grabRatio
+        val cGrab = (1.80 * sqrt(kStiff + kGrab) - cDamp).coerceIn(0.0, 48.0)
+
+        val baseKCouple = 1875.0 * (4.0 / 9.0).pow(s)
+        val kCouple: Double
+        val cShear: Float
+        when (clean.style) {
+            PhysicsStyle.MOCHI -> {
+                kCouple = 0.04 * baseKCouple
+                cShear = MOCHI_CSHEAR
+            }
+            PhysicsStyle.JELLY -> {
+                kCouple = baseKCouple
+                cShear = 0.0f
+            }
+        }
 
         val sigmaRadius = 0.08 + 0.20 * r
         val sigmaTap = 0.65 * sigmaRadius
 
         val fPow = f.pow(1.5)
-        val alphaShake = 0.045 * fPow
-        val kappaGyro = 0.04 * fPow
+        val alphaShake = 3.2 * fPow
+        val kappaGyro = 7.5 * fPow
 
         val pokeDepth = computePokeDepth(clean)
         val iPoke = pokeDepth * sqrtKStiff
-        val kGrab = 2.5 * kStiff
-        val cGrab = max(0.0, 1.80 * sqrt(kStiff + kGrab) - cDamp)
 
         return DerivedPhysicsParams(
+            style = clean.style,
             kStiff = kStiff.toFloat(),
             kCouple = kCouple.toFloat(),
+            cShear = cShear,
             zeta = zeta.toFloat(),
             cDamp = cDamp.toFloat(),
             sigmaRadius = sigmaRadius.toFloat(),
@@ -83,6 +114,7 @@ data class PhysicsConfig(
 
     companion object {
         private const val PRESET_EPS = 1e-5f
+        const val MOCHI_CSHEAR = 4.5f
 
         private fun sanitizeSlider(value: Float, fallback: Float): Float {
             return if (value.isFinite()) value.coerceIn(0f, 1f) else fallback
@@ -90,8 +122,8 @@ data class PhysicsConfig(
 
         /**
          * Returns exact preset pokeDepth when sliders match the active preset,
-         * and piecewise-linearly interpolates through the 3 Blueprint anchor points
-         * (0.05 -> 0.048, 0.50 -> 0.086, 0.85 -> 0.135) for custom slider values.
+         * and piecewise-linearly interpolates through the 3 V5.2 anchor points
+         * (0.08 -> 0.048, 0.55 -> 0.092, 0.92 -> 0.145) for custom slider values.
          */
         private fun computePokeDepth(config: PhysicsConfig): Double {
             val p = config.preset
@@ -104,12 +136,12 @@ data class PhysicsConfig(
             }
 
             val s = config.softness.toDouble()
-            return if (s <= 0.50) {
-                val slopeLow = (0.086 - 0.048) / (0.50 - 0.05)
-                (0.048 + slopeLow * (s - 0.05)).coerceAtLeast(0.03)
+            return if (s <= 0.55) {
+                val slopeLow = (0.092 - 0.048) / (0.55 - 0.08)
+                (0.048 + slopeLow * (s - 0.08)).coerceAtLeast(0.03)
             } else {
-                val slopeHigh = (0.135 - 0.086) / (0.85 - 0.50)
-                (0.086 + slopeHigh * (s - 0.50)).coerceAtMost(0.18)
+                val slopeHigh = (0.145 - 0.092) / (0.92 - 0.55)
+                (0.092 + slopeHigh * (s - 0.55)).coerceAtMost(0.18)
             }
         }
     }

@@ -10,6 +10,7 @@ object ProjectJsonCodec {
     private const val KEY_CONFIG = "config"
 
     private const val KEY_PRESET = "preset"
+    private const val KEY_STYLE = "style"
     private const val KEY_SOFTNESS = "softness"
     private const val KEY_WOBBLE = "wobble"
     private const val KEY_PULL_RADIUS = "pullRadius"
@@ -23,6 +24,7 @@ object ProjectJsonCodec {
         val cleanConfig = metadata.config.sanitized()
         val configObj = JSONObject().apply {
             put(KEY_PRESET, cleanConfig.preset.name)
+            put(KEY_STYLE, cleanConfig.style.name)
             put(KEY_SOFTNESS, cleanConfig.softness.toDouble())
             put(KEY_WOBBLE, cleanConfig.wobble.toDouble())
             put(KEY_PULL_RADIUS, cleanConfig.pullRadius.toDouble())
@@ -71,9 +73,15 @@ object ProjectJsonCodec {
                 } else {
                     defaults.preset.name
                 }
+                val styleName = if (configObj.has(KEY_STYLE) && !configObj.isNull(KEY_STYLE)) {
+                    configObj.optString(KEY_STYLE, null)
+                } else {
+                    null
+                }
 
                 PhysicsConfig(
                     preset = MochiPreset.fromName(presetName),
+                    style = PhysicsStyle.fromName(styleName),
                     softness = optFiniteFloat(configObj, KEY_SOFTNESS, defaults.softness),
                     wobble = optFiniteFloat(configObj, KEY_WOBBLE, defaults.wobble),
                     pullRadius = optFiniteFloat(configObj, KEY_PULL_RADIUS, defaults.pullRadius),

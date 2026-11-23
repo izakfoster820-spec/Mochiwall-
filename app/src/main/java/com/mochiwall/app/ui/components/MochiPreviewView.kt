@@ -213,9 +213,11 @@ fun MochiPreviewView(
         launchContentLoad(content, false)
     }
 
-    LaunchedEffect(config) {
+    LaunchedEffect(config, lifecycleOwner) {
         glView.updateConfig(config)
-        if (isResumed.get()) {
+        val currentlyResumed = isResumed.get() ||
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        if (currentlyResumed) {
             if (config.motionEnabled) {
                 sensorController.start()
             } else {
@@ -229,8 +231,9 @@ fun MochiPreviewView(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> {
-                    isResumed.set(true)
-                    glView.onResume()
+                    if (isResumed.compareAndSet(false, true)) {
+                        glView.onResume()
+                    }
                     if (latestConfig.motionEnabled) {
                         sensorController.start()
                     }
@@ -247,6 +250,16 @@ fun MochiPreviewView(
         }
 
         lifecycleOwner.lifecycle.addObserver(observer)
+
+        // Guarantee sensor startup when entering composition while Activity is already RESUMED
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            if (isResumed.compareAndSet(false, true)) {
+                glView.onResume()
+            }
+            if (latestConfig.motionEnabled) {
+                sensorController.start()
+            }
+        }
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)

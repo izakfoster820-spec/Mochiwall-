@@ -3,12 +3,13 @@ package com.mochiwall.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.mochiwall.app.core.model.MochiPreset
+import com.mochiwall.app.core.model.PhysicsStyle
 import com.mochiwall.app.core.model.ProjectState
 import com.mochiwall.app.data.ProjectRepository
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * ViewModel for Stage 3 (Sandbox), routing live physics preset, slider, and toggle changes
+ * ViewModel for Stage 3 (Sandbox), routing live physics style, preset, slider, and toggle changes
  * directly to [ProjectRepository] with 0 ms UI latency and 300 ms debounced disk persistence.
  */
 class SandboxViewModel(
@@ -17,8 +18,13 @@ class SandboxViewModel(
 
     val projectState: StateFlow<ProjectState> = repository.state
 
+    fun setStyle(style: PhysicsStyle) {
+        repository.updateConfig { it.copy(style = style) }
+    }
+
     /**
-     * Applies [preset]'s exact slider values while preserving the user's current 4 toggle states.
+     * Applies [preset]'s exact slider values while preserving the user's current [PhysicsStyle]
+     * and 4 toggle states.
      */
     fun selectPreset(preset: MochiPreset) {
         repository.updateConfig { current ->
@@ -73,7 +79,8 @@ class SandboxViewModel(
     }
 
     /**
-     * Restores the default Mochi preset sliders AND turns all 4 toggles back ON.
+     * Restores the default Mochi preset (`style = PhysicsStyle.MOCHI`, calibrated sliders,
+     * and all 4 toggles back ON).
      */
     fun resetPhysics() {
         repository.setConfig(MochiPreset.MOCHI.toDefaultConfig())

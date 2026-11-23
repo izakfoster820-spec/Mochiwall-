@@ -4,6 +4,7 @@ import com.mochiwall.app.core.mask.MaskBrushRasterizer
 import com.mochiwall.app.core.mask.MaskDownsampler
 import com.mochiwall.app.core.model.MochiPreset
 import com.mochiwall.app.core.model.PhysicsConfig
+import com.mochiwall.app.core.model.PhysicsStyle
 import com.mochiwall.app.core.physics.MochiPhysicsSolver
 import com.mochiwall.app.core.physics.TouchAction
 import com.mochiwall.app.core.physics.TouchPhase
@@ -22,50 +23,82 @@ class PhysicsSolverTest {
     }
 
     @Test
-    fun tenThousandSubsteps_worstCaseStiffness_zeroNaNAndZeroInvertedTriangles() {
-        val solver = MochiPhysicsSolver(2808f / 1256f)
-        solver.setMask(createFullInteriorMask(), hasActive = true)
-
-        val worstCaseConfig = PhysicsConfig(
-            preset = MochiPreset.FIRM_RUBBER,
-            softness = 0.0f,
-            wobble = 1.0f,
-            pullRadius = 1.0f,
-            shakeForce = 1.0f
+    fun tenThousandSubsteps_mochiAndJelly_worstStiffnessAndMaxSoftness_zeroNaNAndZeroInvertedTriangles() {
+        val testConfigs = listOf(
+            // Worst-case stiffness (softness=0, wobble=1, shakeForce=1) in MOCHI & JELLY
+            PhysicsConfig(
+                preset = MochiPreset.FIRM_RUBBER,
+                style = PhysicsStyle.MOCHI,
+                softness = 0.0f,
+                wobble = 1.0f,
+                pullRadius = 1.0f,
+                shakeForce = 1.0f
+            ),
+            PhysicsConfig(
+                preset = MochiPreset.FIRM_RUBBER,
+                style = PhysicsStyle.JELLY,
+                softness = 0.0f,
+                wobble = 1.0f,
+                pullRadius = 1.0f,
+                shakeForce = 1.0f
+            ),
+            // Max softness (softness=1, wobble=1, shakeForce=1) in MOCHI & JELLY
+            PhysicsConfig(
+                preset = MochiPreset.SOFT_JELLY,
+                style = PhysicsStyle.MOCHI,
+                softness = 1.0f,
+                wobble = 1.0f,
+                pullRadius = 1.0f,
+                shakeForce = 1.0f
+            ),
+            PhysicsConfig(
+                preset = MochiPreset.SOFT_JELLY,
+                style = PhysicsStyle.JELLY,
+                softness = 1.0f,
+                wobble = 1.0f,
+                pullRadius = 1.0f,
+                shakeForce = 1.0f
+            )
         )
 
-        solver.updateTetherWeights(0.5f, 0.5f * solver.aspectRatio, worstCaseConfig.deriveParams().sigmaRadius)
+        val mask = createFullInteriorMask()
 
-        for (step in 0 until 10_000) {
-            if (step % 100 == 0) {
-                val tapX = 0.25f + 0.5f * ((step / 100) % 3) * 0.5f
-                val tapY = (0.3f + 0.4f * ((step / 200) % 2)) * solver.aspectRatio
-                solver.applyPoke(tapX, tapY, worstCaseConfig)
+        for (config in testConfigs) {
+            val solver = MochiPhysicsSolver(2808f / 1256f)
+            solver.setMask(mask, hasActive = true)
+            solver.updateTetherWeights(0.5f, 0.5f * solver.aspectRatio, config.deriveParams().sigmaRadius)
+
+            for (step in 0 until 10_000) {
+                if (step % 100 == 0) {
+                    val tapX = 0.25f + 0.5f * ((step / 100) % 3) * 0.5f
+                    val tapY = (0.3f + 0.4f * ((step / 200) % 2)) * solver.aspectRatio
+                    solver.applyPoke(tapX, tapY, config)
+                }
+
+                val dragging = (step % 250) < 120
+                val dragDx = if (dragging) 0.35f * if ((step / 250) % 2 == 0) 1f else -1f else 0f
+                val dragDy = if (dragging) 0.20f * if ((step / 125) % 2 == 0) 1f else -1f else 0f
+                val sensorFx = if (step % 40 < 20) 25f else -25f
+                val sensorFy = if (step % 60 < 30) 25f else -25f
+
+                solver.stepSubstep(
+                    config = config,
+                    touchPhase = if (dragging) TouchPhase.DRAGGING else TouchPhase.NONE,
+                    dragDx = dragDx,
+                    dragDy = dragDy,
+                    betaTether = if (dragging) 1.0f else 0.0f,
+                    sensorFx = sensorFx,
+                    sensorFy = sensorFy
+                )
+
+                // Periodically verify all 5,530 triangles during the stress test as well
+                if (step % 1000 == 999) {
+                    assertAllTrianglesPositiveAndFinite(solver, step)
+                }
             }
 
-            val dragging = (step % 250) < 120
-            val dragDx = if (dragging) 0.35f * if ((step / 250) % 2 == 0) 1f else -1f else 0f
-            val dragDy = if (dragging) 0.20f * if ((step / 125) % 2 == 0) 1f else -1f else 0f
-            val sensorFx = if (step % 40 < 20) 1.5f else -1.5f
-            val sensorFy = if (step % 60 < 30) 1.5f else -1.5f
-
-            solver.stepSubstep(
-                config = worstCaseConfig,
-                touchPhase = if (dragging) TouchPhase.DRAGGING else TouchPhase.NONE,
-                dragDx = dragDx,
-                dragDy = dragDy,
-                betaTether = if (dragging) 1.0f else 0.0f,
-                sensorFx = sensorFx,
-                sensorFy = sensorFy
-            )
-
-            // Periodically verify all 5,530 triangles during the stress test as well
-            if (step % 500 == 499) {
-                assertAllTrianglesPositiveAndFinite(solver, step)
-            }
+            assertAllTrianglesPositiveAndFinite(solver, 10_000)
         }
-
-        assertAllTrianglesPositiveAndFinite(solver, 10_000)
     }
 
     @Test
@@ -196,7 +229,7 @@ class PhysicsSolverTest {
         solver.setMask(createFullInteriorMask(), hasActive = true)
         val dampedConfig = PhysicsConfig(
             preset = MochiPreset.FIRM_RUBBER,
-            softness = 0.05f,
+            softness = 0.08f,
             wobble = 0.0f // High damping so it settles quickly
         )
         val touch = TouchStateMachine()
