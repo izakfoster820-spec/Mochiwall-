@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp"
+    android:height="320dp"
+    android:viewportWidth="180"
+    android:viewportHeight="320">
+    <!-- Obsidian background -->
+    <path
+        android:fillColor="#111215"
+        android:pathData="M0,0h180v320h-180z" />
+    <!-- Framed panel surface -->
+    <path
+        android:fillColor="#1A1C22"
+        android:pathData="M22,28 L158,28 C164,28 168,32 168,38 L168,282 C168,288 164,292 158,292 L22,292 C16,292 12,288 12,282 L12,38 C12,32 16,28 22,28 Z" />
+    <!-- Soft coral halo -->
+    <path
+        android:fillColor="#4DFF6B6B"
+        android:pathData="M36,164 C36,128 58,108 90,108 C122,108 144,128 144,164 C144,196 122,212 90,212 C58,212 36,196 36,164 Z" />
+    <!-- Inner soft coral mochi accent -->
+    <path
+        android:fillColor="#FF6B6B"
+        android:pathData="M52,165 C52,140 67,126 90,126 C113,126 128,140 128,165 C128,187 113,198 90,198 C67,198 52,187 52,165 Z" />
+    <!-- Subtle top-left directional sheen highlight -->
+    <path
+        android:fillColor="#33F4EFE6"
+        android:pathData="M64,148 C68,139 78,134 89,134 C94,134 97,138 94,141 C84,143 75,148 70,156 C66,160 61,155 64,148 Z" />
+</vector>
