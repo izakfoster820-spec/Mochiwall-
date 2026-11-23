@@ -3,6 +3,7 @@ package com.mochiwall.app.ui.screens
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,6 +71,8 @@ fun FrameScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    BackHandler(enabled = uiState.isExporting) {}
 
     val windowBounds = remember(context) {
         context.getSystemService(WindowManager::class.java)?.maximumWindowMetrics?.bounds

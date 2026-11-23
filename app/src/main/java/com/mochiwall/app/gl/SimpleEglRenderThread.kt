@@ -316,7 +316,7 @@ class SimpleEglRenderThread(
         if (destroyed.get()) return
 
         renderHandler.post {
-            if (state != State.ACTIVE || !isVisible || !currentConfig.wakeWobbleEnabled) {
+            if (state == State.DESTROYED || !isVisible || !currentConfig.wakeWobbleEnabled) {
                 return@post
             }
             solver.applyWakeWobble(currentConfig)

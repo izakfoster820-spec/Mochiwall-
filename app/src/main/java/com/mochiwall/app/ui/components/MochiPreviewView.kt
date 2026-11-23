@@ -484,6 +484,7 @@ internal class MochiSandboxGLView(context: Context) : GLSurfaceView(context) {
     fun releaseResources() {
         onGlContextRecreated = null
         mainActivePointerId = MotionEvent.INVALID_POINTER_ID
+        renderMode = RENDERMODE_WHEN_DIRTY
         recyclePendingBitmap()
         queueEvent {
             sensorPipeline.reset()

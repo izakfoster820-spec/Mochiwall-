@@ -1,6 +1,7 @@
 package com.mochiwall.app.ui.screens
 
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -74,6 +75,8 @@ fun SculptScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    BackHandler(enabled = uiState.isCommitting) {}
 
     val maxPreviewLongEdge = remember(context) {
         val bounds = context.getSystemService(WindowManager::class.java)?.maximumWindowMetrics?.bounds

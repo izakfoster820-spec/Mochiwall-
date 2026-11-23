@@ -29,6 +29,8 @@ object WallpaperApplyHelper {
             return true
         } catch (_: ActivityNotFoundException) {
             // Fall through to generic live wallpaper chooser
+        } catch (_: SecurityException) {
+            // Fall through to generic live wallpaper chooser
         }
 
         val fallbackIntent = Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER).apply {
@@ -41,6 +43,8 @@ object WallpaperApplyHelper {
             context.startActivity(fallbackIntent)
             true
         } catch (_: ActivityNotFoundException) {
+            false
+        } catch (_: SecurityException) {
             false
         }
     }
